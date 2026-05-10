@@ -260,6 +260,14 @@ export function startStaticDailyReminders(
     );
   }
 
+  cron.schedule('30 7 * * *', () => {
+    void dependencies
+      .sendMessage(ownerChatId, 'Доброе утро! Какие задачи планируешь на сегодня?')
+      .catch((error) => {
+        dependencies.logger.error('[reminder:morning] failed to send message', error);
+      });
+  }, { timezone: assistantTimeZone });
+
   dependencies.logger.log(
     `[reminder:daily] active timezone=${assistantTimeZone} chat=${ownerChatId} triggers=${dailyContextSwitchTriggers.length}`,
   );
