@@ -1,11 +1,13 @@
 {
-  "name": "dudoserr",
+  "name": "schedule-bot",
   "version": "1.0.0",
-  "description": "Telegram AI assistant with scheduling, memory, and voice transcription.",
+  "description": "🤖 Personal Telegram AI assistant with task scheduling, long-term memory, voice transcription, and intelligent reminders.",
+  "long_description": "Dudoserr is a sophisticated Telegram bot that acts as your personal AI assistant. It manages your daily tasks, remembers important information, provides intelligent reminders based on your schedule, and processes voice messages. Built with TypeScript, it uses OpenRouter/Groq/OpenAI for AI, SQLite for storage, and Mem0 for long-term memory.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
+    "dev": "npm run build && npm start",
     "db:init": "npm run build && node dist/db/bootstrap.js",
     "db:verify-tools": "npm run build && node dist/db/verify-tools.js",
     "memory:clean-test": "npm run build && node dist/memory/clean-test-memory.js",
@@ -14,8 +16,30 @@
     "voice:verify": "npm run build && node dist/telegram/verify-voice.js",
     "test": "echo \"No tests configured\""
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "telegram",
+    "bot",
+    "ai",
+    "assistant",
+    "task-management",
+    "scheduling",
+    "memory",
+    "voice",
+    "transcription",
+    "openai",
+    "llm",
+    "typescript",
+    "node.js"
+  ],
+  "author": "Umalanif <your-email@example.com>",
+  "homepage": "https://github.com/Umalanif/Schedule-bot",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Umalanif/Schedule-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Umalanif/Schedule-bot/issues"
+  },
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
