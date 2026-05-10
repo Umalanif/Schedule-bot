@@ -1,0 +1,34 @@
+{
+  "name": "dudoserr",
+  "version": "1.0.0",
+  "description": "Telegram AI assistant with scheduling, memory, and voice transcription.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:init": "npm run build && node dist/db/bootstrap.js",
+    "db:verify-tools": "npm run build && node dist/db/verify-tools.js",
+    "memory:clean-test": "npm run build && node dist/memory/clean-test-memory.js",
+    "memory:verify": "npm run build && node dist/memory/verify-memory.js",
+    "telegram:verify-text-schedule": "npm run build && node dist/telegram/verify-text-schedule.js",
+    "voice:verify": "npm run build && node dist/telegram/verify-voice.js",
+    "test": "echo \"No tests configured\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "mem0ai": "^3.0.3",
+    "node-cron": "^4.2.1",
+    "openai": "^6.37.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.2",
+    "typescript": "^6.0.3"
+  }
+}
