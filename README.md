@@ -22,7 +22,7 @@ A personal Telegram AI assistant for daily schedule management. Built for one us
 - **Telegram:** Telegraf
 - **LLM:** DeepSeek via OpenRouter
 - **Voice transcription:** Groq Whisper
-- **Memory:** Mem0
+- **Memory:** Mem0 (OSS, local SQLite + embeddings)
 - **Database:** SQLite + Drizzle ORM
 - **Scheduler:** node-cron
 - **Process manager:** PM2
@@ -50,23 +50,25 @@ TELEGRAM_OWNER_ID=         # your numeric Telegram user ID (from @userinfobot)
 # Groq is used exclusively for Whisper voice transcription.
 # Note: Groq also offers free-tier LLM models if you want to use it as your main provider instead.
 AI_PROVIDER=openrouter
-OPENROUTER_API_KEY=        # from openrouter.ai — used for the main LLM (DeepSeek)
+OPENROUTER_API_KEY=        # from openrouter.ai — used for the main LLM and embeddings
 GROQ_API_KEY=              # from groq.com — required for voice transcription (Whisper)
 
-# Memory
-MEM0_API_KEY=              # from mem0.ai
+# Memory (see Customization section below for options)
+MEM0_API_KEY=              # only needed if using hosted mem0.ai platform
 MEM0_API_BASE=https://api.mem0.ai/v1
 ```
 
 ## Customization
 
-The bot's personality, behavior rules, and your **daily schedule skeleton** are all defined in one file:
+### Daily schedule
+
+The bot's personality, behavior rules, and your **daily schedule skeleton** are all defined in:
 
 ```
 src/ai/system-prompt.ts
 ```
 
-Inside, you'll find a `DEFAULT SCHEDULE` block that is injected into every request so the AI understands your daily context. Edit it to match your own routine:
+Inside, you'll find a `DEFAULT SCHEDULE` block injected into every request so the AI understands your daily context. Edit it to match your own routine:
 
 ```
 DEFAULT SCHEDULE (UTC+3):
@@ -79,13 +81,17 @@ DEFAULT SCHEDULE (UTC+3):
 - 22:30: Sleep.
 ```
 
-The fixed daily cron reminders (schedule transition alerts and end-of-day review) are configured in:
+The fixed daily cron reminders are configured in:
 
 ```
 src/reminders/service.ts
 ```
 
-Adjust the times and messages there to match your own schedule.
+### Memory: OSS vs hosted
+
+This project uses **Mem0 OSS** (open-source, self-hosted). Memory is stored **locally** in a SQLite vector store and embeddings are generated via OpenRouter — no registration on mem0.ai is required, and no data leaves your server.
+
+If you prefer the hosted mem0.ai platform (easier setup, cloud storage), you can switch by providing `MEM0_API_KEY` and `MEM0_API_BASE` in your `.env` and updating the Mem0 client initialization in `src/memory/client.ts`.
 
 ## Local Setup
 
@@ -107,7 +113,7 @@ npm install
 nano .env              # create and fill in your keys
 npm run db:init
 npm run build
-npm install -g npm -g pm2
+npm install -g pm2
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
