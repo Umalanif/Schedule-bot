@@ -296,25 +296,36 @@ async function handleVoiceMessage(
     `[telegram:voice] user=${message.from?.id ?? "unknown"} chat=${message.chat.id} file=${voice.file_id}`,
   );
 
-  const file = await dependencies.getFile(voice.file_id);
+  try {
+    const file = await dependencies.getFile(voice.file_id);
 
-  if (!file.file_path) {
-    throw new Error(`Telegram did not return file_path for voice file ${voice.file_id}`);
+    if (!file.file_path) {
+      throw new Error(`Telegram did not return file_path for voice file ${voice.file_id}`);
+    }
+
+    const audioBuffer = await dependencies.downloadFile(file.file_path);
+    const transcript = await dependencies.transcribeVoiceMessage(
+      audioBuffer,
+      "voice.ogg",
+      "audio/ogg",
+    );
+
+    dependencies.logger.log(
+      `[telegram:transcript] user=${message.from?.id ?? "unknown"} chat=${message.chat.id} text=${transcript}`,
+    );
+
+    recordShortTermHistory(dependencies.logger, message, "user", transcript);
+    await generateAndSendReply(dependencies, message, transcript);
+  } catch (error) {
+    dependencies.logger.error(
+      `[telegram:voice:error] user=${message.from?.id ?? "unknown"} chat=${message.chat.id}`,
+      error,
+    );
+    await dependencies.sendMessage(
+      message.chat.id,
+      "Could not process voice message. Please try again or send text.",
+    );
   }
-
-  const audioBuffer = await dependencies.downloadFile(file.file_path);
-  const transcript = await dependencies.transcribeVoiceMessage(
-    audioBuffer,
-    file.file_path.split("/").pop() ?? `${voice.file_unique_id}.ogg`,
-    voice.mime_type,
-  );
-
-  dependencies.logger.log(
-    `[telegram:transcript] user=${message.from?.id ?? "unknown"} chat=${message.chat.id} text=${transcript}`,
-  );
-
-  recordShortTermHistory(dependencies.logger, message, "user", transcript);
-  await generateAndSendReply(dependencies, message, transcript);
 }
 
 async function handleMessage(
@@ -378,8 +389,16 @@ export async function startTelegramBot(): Promise<void> {
       const updates = await defaultDependencies.getUpdates(nextOffset);
 
       for (const update of updates) {
-        await processTelegramUpdate(update);
-        nextOffset = update.update_id + 1;
+        try {
+          await processTelegramUpdate(update);
+        } catch (error) {
+          defaultDependencies.logger.error(
+            `[telegram:update:error] update=${update.update_id}`,
+            error,
+          );
+        } finally {
+          nextOffset = update.update_id + 1;
+        }
       }
     } catch (error) {
       defaultDependencies.logger.error("[telegram:error]", error);

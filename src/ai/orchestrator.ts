@@ -108,6 +108,16 @@ const assistantTools: ChatCompletionTool[] = [
   },
 ];
 
+type TaskCreationFeedback = {
+  successMessages: string[];
+  failureMessages: string[];
+};
+
+type ExecutedToolResult = {
+  serialized: string;
+  taskCreationFeedback?: TaskCreationFeedback;
+};
+
 function formatCurrentTimeContext(): string {
   const now = new Date();
 
@@ -160,6 +170,54 @@ function serializeForModel(value: unknown): string {
     },
     2,
   );
+}
+
+function formatScheduledTaskTime(value: unknown): string {
+  const scheduledFor = value instanceof Date ? value : new Date(String(value));
+
+  if (Number.isNaN(scheduledFor.getTime())) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(scheduledFor);
+}
+
+function normalizeErrorReason(error: unknown): string | null {
+  const rawReason = String(error).trim().replace(/^Error:\s*/i, "");
+
+  if (!rawReason || rawReason === "undefined" || rawReason === "null") {
+    return null;
+  }
+
+  return rawReason.endsWith(".") ? rawReason : `${rawReason}.`;
+}
+
+function formatTaskAddedMessage(title: string, scheduledFor: unknown): string {
+  return `✅ Task added: ${title}\nTime: ${formatScheduledTaskTime(scheduledFor)}`;
+}
+
+function formatTaskFailedMessage(title: string, reason?: string | null): string {
+  return reason
+    ? `❌ Could not add task "${title}". ${reason}`
+    : `❌ Could not add task "${title}".`;
+}
+
+function buildTaskCreationReply(feedback: TaskCreationFeedback): string | null {
+  const messages = [...feedback.successMessages, ...feedback.failureMessages].filter(Boolean);
+
+  if (messages.length === 0) {
+    return null;
+  }
+
+  return messages.join("\n\n");
 }
 
 async function loadRelevantMemoryContext(
@@ -229,12 +287,14 @@ async function executeToolCall(
   dependencies: AssistantOrchestratorDependencies,
   toolCall: ChatCompletionMessageToolCall,
   userId: string,
-): Promise<string> {
+): Promise<ExecutedToolResult> {
   if (toolCall.type !== "function") {
-    return serializeForModel({
-      ok: false,
-      error: `Unsupported tool call type: ${toolCall.type}`,
-    });
+    return {
+      serialized: serializeForModel({
+        ok: false,
+        error: `Unsupported tool call type: ${toolCall.type}`,
+      }),
+    };
   }
 
   let parsedArguments: Record<string, unknown>;
@@ -242,11 +302,13 @@ async function executeToolCall(
   try {
     parsedArguments = JSON.parse(toolCall.function.arguments);
   } catch (error) {
-    return serializeForModel({
-      ok: false,
-      error: "Tool arguments were not valid JSON.",
-      details: String(error),
-    });
+    return {
+      serialized: serializeForModel({
+        ok: false,
+        error: "Tool arguments were not valid JSON.",
+        details: String(error),
+      }),
+    };
   }
 
   dependencies.logger.log(
@@ -262,10 +324,16 @@ async function executeToolCall(
           scheduledFor: String(parsedArguments.scheduledFor ?? ""),
         });
 
-        return serializeForModel({
-          ok: true,
-          task,
-        });
+        return {
+          serialized: serializeForModel({
+            ok: true,
+            task,
+          }),
+          taskCreationFeedback: {
+            successMessages: [formatTaskAddedMessage(task.description, task.scheduledFor)],
+            failureMessages: [],
+          },
+        };
       }
 
       case "add_multiple_tasks": {
@@ -280,10 +348,18 @@ async function executeToolCall(
           })),
         });
 
-        return serializeForModel({
-          ok: true,
-          tasks,
-        });
+        return {
+          serialized: serializeForModel({
+            ok: true,
+            tasks,
+          }),
+          taskCreationFeedback: {
+            successMessages: tasks.map((task) =>
+              formatTaskAddedMessage(task.description, task.scheduledFor),
+            ),
+            failureMessages: [],
+          },
+        };
       }
 
       case "get_today_schedule": {
@@ -296,10 +372,12 @@ async function executeToolCall(
           ...(referenceDate ? { referenceDate } : {}),
         });
 
-        return serializeForModel({
-          ok: true,
-          tasks,
-        });
+        return {
+          serialized: serializeForModel({
+            ok: true,
+            tasks,
+          }),
+        };
       }
 
       case "update_task_status": {
@@ -311,10 +389,12 @@ async function executeToolCall(
             | "cancelled",
         });
 
-        return serializeForModel({
-          ok: true,
-          task,
-        });
+        return {
+          serialized: serializeForModel({
+            ok: true,
+            task,
+          }),
+        };
       }
 
       case "schedule_reminder": {
@@ -323,24 +403,62 @@ async function executeToolCall(
           triggerTime: String(parsedArguments.trigger_time ?? ""),
         });
 
-        return serializeForModel({
-          ok: true,
-          reminder,
-        });
+        return {
+          serialized: serializeForModel({
+            ok: true,
+            reminder,
+          }),
+        };
       }
 
       default:
-        return serializeForModel({
-          ok: false,
-          error: `Unknown tool name: ${toolCall.function.name}`,
-        });
+        return {
+          serialized: serializeForModel({
+            ok: false,
+            error: `Unknown tool name: ${toolCall.function.name}`,
+          }),
+        };
     }
   } catch (error) {
-    return serializeForModel({
-      ok: false,
-      error: `Tool execution failed for ${toolCall.function.name}.`,
-      details: String(error),
-    });
+    const description = String(parsedArguments.description ?? "");
+    const parsedTasks = Array.isArray(parsedArguments.tasks)
+      ? parsedArguments.tasks
+      : [];
+    const reason = normalizeErrorReason(error);
+    const taskCreationFeedback =
+      toolCall.function.name === "add_task"
+        ? {
+            successMessages: [],
+            failureMessages: [formatTaskFailedMessage(description, reason)],
+          }
+        : toolCall.function.name === "add_multiple_tasks"
+          ? {
+              successMessages: [],
+              failureMessages: parsedTasks.map((task) =>
+                formatTaskFailedMessage(
+                  String((task as Record<string, unknown>).description ?? ""),
+                  reason,
+                ),
+              ),
+            }
+          : undefined;
+
+    return taskCreationFeedback
+      ? {
+          serialized: serializeForModel({
+            ok: false,
+            error: `Tool execution failed for ${toolCall.function.name}.`,
+            details: String(error),
+          }),
+          taskCreationFeedback,
+        }
+      : {
+          serialized: serializeForModel({
+            ok: false,
+            error: `Tool execution failed for ${toolCall.function.name}.`,
+            details: String(error),
+          }),
+        };
   }
 }
 
@@ -418,14 +536,48 @@ export async function generateAssistantReply(
       tool_calls: toolCalls,
     });
 
+    const taskCreationFeedback: TaskCreationFeedback = {
+      successMessages: [],
+      failureMessages: [],
+    };
+
     for (const toolCall of toolCalls) {
       const toolResult = await executeToolCall(dependencies, toolCall, input.userId);
+
+      taskCreationFeedback.successMessages.push(
+        ...(toolResult.taskCreationFeedback?.successMessages ?? []),
+      );
+      taskCreationFeedback.failureMessages.push(
+        ...(toolResult.taskCreationFeedback?.failureMessages ?? []),
+      );
 
       messages.push({
         role: "tool",
         tool_call_id: toolCall.id,
-        content: toolResult,
+        content: toolResult.serialized,
       });
+    }
+
+    const includesOnlyTaskCreationCalls = toolCalls.every(
+      (toolCall) =>
+        toolCall.type === "function" &&
+        (toolCall.function.name === "add_task" ||
+          toolCall.function.name === "add_multiple_tasks"),
+    );
+
+    if (includesOnlyTaskCreationCalls) {
+      const reply = buildTaskCreationReply(taskCreationFeedback);
+
+      if (reply) {
+        persistConversationMemory(
+          dependencies,
+          input.userId,
+          input.currentMessage,
+          reply,
+        );
+
+        return reply;
+      }
     }
   }
 
