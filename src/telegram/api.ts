@@ -77,6 +77,19 @@ export async function getFile(fileId: string): Promise<TelegramFile> {
   return telegramRequest<TelegramFile>(`getFile?file_id=${encodeURIComponent(fileId)}`);
 }
 
+export async function sendChatAction(chatId: number, action: string): Promise<void> {
+  await telegramRequest("sendChatAction", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      action,
+    }),
+  });
+}
+
 export async function downloadFile(filePath: string): Promise<Buffer> {
   const response = await fetch(
     `${telegramFileBaseUrl}/${filePath.replace(/^\/+/, "")}`,

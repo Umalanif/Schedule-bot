@@ -15,6 +15,7 @@ import {
   updateTaskStatusSchema,
 } from "../db/tools";
 import { memoryClient } from "../memory/client";
+import { getAllMemoryFacts } from "../memory/maintenance";
 import type { ShortTermHistoryEntry } from "../telegram/history";
 import {
   openRouterChatModel,
@@ -102,6 +103,19 @@ const assistantTools: ChatCompletionTool[] = [
           },
         },
         required: ["trigger_time", "message"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_memories",
+      description: "List all facts stored in the user's long-term memory.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
         additionalProperties: false,
       },
     },
@@ -407,6 +421,18 @@ async function executeToolCall(
           serialized: serializeForModel({
             ok: true,
             reminder,
+          }),
+        };
+      }
+
+      case "list_memories": {
+        const facts = getAllMemoryFacts();
+
+        return {
+          serialized: serializeForModel({
+            ok: true,
+            totalFacts: facts.length,
+            facts,
           }),
         };
       }

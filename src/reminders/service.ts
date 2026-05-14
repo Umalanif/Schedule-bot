@@ -1,6 +1,7 @@
 import cron from "node-cron";
 
 import { env } from "../config/env";
+import { getTodayTaskSummary, type TaskSummary } from "../db/stats";
 import type { Task } from "../db/schema";
 import { get_tasks_in_range } from "../db/tools";
 import { sendMessage } from "../telegram/api";
@@ -233,6 +234,22 @@ async function buildContextSwitchMessage(
   }
 }
 
+function formatTaskSummary(summary: TaskSummary): string {
+  const lines = [
+    "📋 Итоги дня:",
+    `✅ Выполнено: ${summary.completed}`,
+    `⏳ Ожидает: ${summary.pending}`,
+    `❌ Отменено: ${summary.cancelled}`,
+    `Всего задач: ${summary.total}`,
+  ];
+
+  if (summary.pending > 0) {
+    lines.push(`\nОсталось невыполненных задач: ${summary.pending}`);
+  }
+
+  return lines.join("\n");
+}
+
 export function startStaticDailyReminders(
   overrides: Partial<ReminderServiceDependencies> = {},
 ): void {
@@ -266,6 +283,16 @@ export function startStaticDailyReminders(
       .catch((error) => {
         dependencies.logger.error('[reminder:morning] failed to send message', error);
       });
+  }, { timezone: assistantTimeZone });
+
+  cron.schedule('5 18 * * *', async () => {
+    try {
+      const summary = await getTodayTaskSummary();
+      const message = formatTaskSummary(summary);
+      await dependencies.sendMessage(ownerChatId, message);
+    } catch (error) {
+      dependencies.logger.error('[reminder:end-of-day-summary] failed', error);
+    }
   }, { timezone: assistantTimeZone });
 
   dependencies.logger.log(

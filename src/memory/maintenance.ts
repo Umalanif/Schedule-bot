@@ -11,6 +11,12 @@ export interface MemoryStats {
   totalFacts: number;
 }
 
+export interface MemoryFact {
+  id: string;
+  memory: string;
+  createdAt: string | null;
+}
+
 export interface DeletedTestMemorySummary {
   deletedHistoryRows: number;
   deletedMessageRows: number;
@@ -95,6 +101,35 @@ export function getMemoryStats(): MemoryStats {
     return {
       totalFacts: result.totalFacts,
     };
+  } finally {
+    vectorDb.close();
+  }
+}
+
+export function getAllMemoryFacts(): MemoryFact[] {
+  const vectorDb = new Database(mem0VectorDbPath);
+
+  try {
+    const rows = vectorDb
+      .prepare("SELECT id, payload FROM vectors")
+      .all() as Array<{ id: string; payload: string }>;
+
+    return rows.map((row) => {
+      let memoryText = row.id;
+
+      try {
+        const parsed = JSON.parse(row.payload) as { memory?: string; data?: string; created_at?: string };
+        memoryText = parsed.memory ?? parsed.data ?? row.id;
+      } catch {
+        memoryText = row.id;
+      }
+
+      return {
+        id: row.id,
+        memory: memoryText,
+        createdAt: null,
+      };
+    });
   } finally {
     vectorDb.close();
   }

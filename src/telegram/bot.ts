@@ -11,6 +11,7 @@ import {
   downloadFile,
   getFile,
   getUpdates,
+  sendChatAction,
   sendMessage,
   setMyCommands,
   type TelegramBotCommand,
@@ -42,6 +43,7 @@ interface TelegramBotDependencies {
   getTodaySchedule: typeof get_today_schedule;
   getUpdates: typeof getUpdates;
   logger: TelegramBotLogger;
+  sendChatAction: typeof sendChatAction;
   sendMessage: typeof sendMessage;
   setMyCommands: typeof setMyCommands;
   sleep: (milliseconds: number) => Promise<void>;
@@ -59,6 +61,7 @@ const defaultDependencies: TelegramBotDependencies = {
   getTodaySchedule: get_today_schedule,
   getUpdates,
   logger: console,
+  sendChatAction,
   sendMessage,
   setMyCommands,
   sleep: (milliseconds) =>
@@ -242,6 +245,17 @@ async function handleCommand(
   }
 }
 
+function scheduleTypingIndicator(
+  dependencies: TelegramBotDependencies,
+  chatId: number,
+): NodeJS.Timeout {
+  void dependencies.sendChatAction(chatId, "typing");
+
+  return setInterval(() => {
+    void dependencies.sendChatAction(chatId, "typing");
+  }, 4_000);
+}
+
 async function generateAndSendReply(
   dependencies: TelegramBotDependencies,
   message: TelegramMessage,
@@ -249,14 +263,21 @@ async function generateAndSendReply(
 ): Promise<void> {
   const userId = requireMessageUserId(message);
   const shortTermHistory = getShortTermHistory(userId);
-  const reply = await dependencies.generateAssistantReply({
-    currentMessage,
-    shortTermHistory,
-    userId: String(userId),
-  });
 
-  await dependencies.sendMessage(message.chat.id, reply);
-  recordShortTermHistory(dependencies.logger, message, "assistant", reply);
+  const typingTimer = scheduleTypingIndicator(dependencies, message.chat.id);
+
+  try {
+    const reply = await dependencies.generateAssistantReply({
+      currentMessage,
+      shortTermHistory,
+      userId: String(userId),
+    });
+
+    await dependencies.sendMessage(message.chat.id, reply);
+    recordShortTermHistory(dependencies.logger, message, "assistant", reply);
+  } finally {
+    clearInterval(typingTimer);
+  }
 }
 
 async function handleTextMessage(
@@ -296,6 +317,8 @@ async function handleVoiceMessage(
     `[telegram:voice] user=${message.from?.id ?? "unknown"} chat=${message.chat.id} file=${voice.file_id}`,
   );
 
+  const typingTimer = scheduleTypingIndicator(dependencies, message.chat.id);
+
   try {
     const file = await dependencies.getFile(voice.file_id);
 
@@ -315,8 +338,11 @@ async function handleVoiceMessage(
     );
 
     recordShortTermHistory(dependencies.logger, message, "user", transcript);
+
+    clearInterval(typingTimer);
     await generateAndSendReply(dependencies, message, transcript);
   } catch (error) {
+    clearInterval(typingTimer);
     dependencies.logger.error(
       `[telegram:voice:error] user=${message.from?.id ?? "unknown"} chat=${message.chat.id}`,
       error,
